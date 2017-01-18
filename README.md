@@ -19,6 +19,18 @@ Building:
 docker build -t ubergarm/pythumbio .
 ```
 
+## Configuration
+You can tweak some settings including number of worker threads and number of concurrent workers per thread.
+
+## Benchmarking
+You can use `wrk` and point it at your container directly or use `docker` `links` etc...
+```bash
+docker run --rm -it williamyeh/wrk -t4 -c400 -d30s "http://172.17.0.2:8000/version"
+```
+```bash
+docker run --rm -it williamyeh/wrk -t4 -c400 -d30s "http://172.17.0.2:8000/video?url=http://myvideo.com/name.mp4"
+```
+
 ## Style Guide
 Run
 ```bash
@@ -31,7 +43,7 @@ flake8 server.py
 - [ ] Secure against Command Injection attacks
 - [ ] Add more query parameters for various features
 - [ ] Environment Variables for Config
-- [ ] Consider `asyncio.subprocess`
+- [x] Consider `asyncio.subprocess`
 - [ ] Remove dependency on `ubergarm/sanic-alpine`
 
 ## References
