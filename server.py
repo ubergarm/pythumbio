@@ -12,7 +12,7 @@ sem = asyncio.Semaphore(4)
 app = Sanic(__name__)
 
 
-async def video(url, auth):
+async def video(url, auth, width, height):
     """Returns a thumbnail extracted from video at specified url"""
     async with sem:
         create = asyncio.create_subprocess_exec(
@@ -21,8 +21,9 @@ async def video(url, auth):
             'Authorization: {}\r\nRange: bytes=0-{}\r\n'.format(auth or '', 1024*1024*2),
             '-i', url,
             '-ss', '00:00:03',
-            '-vframes', '1',
+            '-frames:v', '1',
             '-f', 'image2',
+            '-vf', 'scale=w={}:h={}:force_original_aspect_ratio=decrease'.format(width or -1, height or -1),
             '-',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -81,12 +82,13 @@ async def version():
 @app.route("/video")
 async def query_video(request):
     url = request.args.get('url')
+    width = request.args.get('width')
+    height = request.args.get('height')
+    auth = request.headers.get('Authorization')
     if not url:
         return json(body={'error': 'no url paramter found'}, status=400)
 
-    auth = request.headers.get('Authorization')
-
-    return await video(url, auth)
+    return await video(url=url, auth=auth, width=width, height=height)
 
 
 @app.route("/version")
