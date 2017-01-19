@@ -12,22 +12,49 @@ sem = asyncio.Semaphore(4)
 app = Sanic(__name__)
 
 
-async def video(url, auth, width, height):
+async def video(auth, url, width, height, watermark, alpha, scale, offset):
     """Returns a thumbnail extracted from video at specified url"""
+    width = width or -1
+    height = height or -1
+    watermark = watermark
+    alpha = alpha or 0.5
+    scale = scale or 0.20
+    offset = offset or 0.05
+
     async with sem:
-        create = asyncio.create_subprocess_exec(
-            'ffmpeg',
-            '-headers',
-            'Authorization: {}\r\nRange: bytes=0-{}\r\n'.format(auth or '', 1024*1024*2),
-            '-i', url,
-            '-ss', '00:00:03',
-            '-frames:v', '1',
-            '-f', 'image2',
-            '-vf', 'scale=w={}:h={}:force_original_aspect_ratio=decrease'.format(width or -1, height or -1),
-            '-',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        if watermark:
+            create = asyncio.create_subprocess_exec(
+                'ffmpeg',
+                '-headers',
+                'Authorization: {}\r\nRange: bytes=0-{}\r\n'.format(auth or '', 1024*1024*2),
+                '-i', url,
+                '-i', watermark,
+                '-ss', '00:00:03',
+                '-frames:v', '1',
+                '-f', 'image2',
+                '-filter_complex',
+                '[1:v]colorchannelmixer=aa={alpha}[translogo];[translogo][0:v]scale2ref={scale}*min(iw\,ih):{scale}*min(iw\,ih)[logo1][base];[base][logo1]overlay=W-w-{offset}*min(W\,H):H-h-{offset}*min(W\,H)[prev];[prev]scale=w={width}:h={height}:force_original_aspect_ratio=decrease[out]'.format(width=width, height=height, alpha=alpha, offset=offset, scale=scale),
+                '-map', '[out]',
+                '-',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            create = asyncio.create_subprocess_exec(
+                'ffmpeg',
+                '-headers',
+                'Authorization: {}\r\nRange: bytes=0-{}\r\n'.format(auth or '', 1024*1024*2),
+                '-i', url,
+                '-ss', '00:00:03',
+                '-frames:v', '1',
+                '-f', 'image2',
+                '-vf',
+                'scale=w={width}:h={height}:force_original_aspect_ratio=decrease'.format(width=width, height=height),
+                '-',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
         proc = await create
 
         stdout = bytearray()
@@ -81,14 +108,18 @@ async def version():
 
 @app.route("/video")
 async def query_video(request):
+    auth = request.headers.get('Authorization')
     url = request.args.get('url')
     width = request.args.get('width')
     height = request.args.get('height')
-    auth = request.headers.get('Authorization')
+    watermark = request.args.get('watermark')
+    alpha = request.args.get('alpha')
+    scale = request.args.get('scale')
+    offset = request.args.get('offset')
     if not url:
         return json(body={'error': 'no url paramter found'}, status=400)
 
-    return await video(url=url, auth=auth, width=width, height=height)
+    return await video(auth=auth, url=url, width=width, height=height, watermark=watermark, alpha=alpha, scale=scale, offset=offset)
 
 
 @app.route("/version")
