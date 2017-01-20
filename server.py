@@ -19,8 +19,8 @@ app = Sanic(__name__)
 
 async def video(headers, args):
     """Returns a thumbnail extracted from video at specified url"""
-    auth = headers.get('auth', '')
-    url = args.get('url', -1)
+    auth = headers.get('Authorization', '')
+    url = args.get('url')
     width = args.get('width', -1)
     height = args.get('height', -1)
     watermark = args.get('watermark')
