@@ -19,8 +19,33 @@ Building:
 docker build -t ubergarm/pythumbio .
 ```
 
-## Configuration
-You can tweak some settings including number of worker threads and number of concurrent workers per thread.
+## Runtime Configuration
+Environment Variable | Description | Default
+--- | --- | ---
+`HEAD_LIMIT` | *Max number of bytes to download of beginning of video file* | `2 MiB`
+`NUM_THREADS` | *How many `sanic` worker threads* | `1`
+`NUM_CONCURRENCY` | *How many concurrent requests handled per `sanic` worker threads* | `4`
+
+## API
+####  Endpoint: `/version`
+Returns the output from `ffmpeg -version`
+
+Argument | Description | Default
+--- | --- | ---
+`-` | *n/a* | `n/a`
+
+####  Endpoint: `/video`
+Returns a `jpeg` format thumbnail from a given video file with optional parameters.
+
+Argument | Description | Default
+--- | --- | ---
+`url` | *url of video to thumbnail* | `n/a`
+`width` | *desired width of output thumbnail* | `-1`
+`height` | *desired height of output thumbnail* | `-1`
+`watermark` | *url of transparent png watermark image* | `n/a`
+`alpha` | *opacity of watermark* | `0.5`
+`scale` | *scale factor of watermark* | `0.2`
+`offset` | *offset from bottom right corner of watermark* | `0.05`
 
 ## Benchmarking
 You can use `wrk` and point it at your container directly or use `docker` `links` etc...
