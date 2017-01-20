@@ -34,14 +34,14 @@ docker run --rm -it williamyeh/wrk -t4 -c400 -d30s "http://172.17.0.2:8000/video
 ## Style Guide
 Run
 ```bash
-flake8 server.py
+flake8 --max-line-length=120 server.py
 ```
 
 ## TODO
 - [ ] Authorization
 - [ ] Error Checking
 - [ ] Secure against Command Injection attacks
-- [ ] Add more query parameters for various features
+- [x] Add more query parameters for various features
 - [ ] Environment Variables for Config
 - [x] Consider `asyncio.subprocess`
 - [ ] Remove dependency on `ubergarm/sanic-alpine`
