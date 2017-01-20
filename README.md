@@ -42,7 +42,7 @@ flake8 --max-line-length=120 server.py
 - [ ] Error Checking
 - [ ] Secure against Command Injection attacks
 - [x] Add more query parameters for various features
-- [ ] Environment Variables for Config
+- [x] Environment Variables for Config
 - [x] Consider `asyncio.subprocess`
 - [ ] Remove dependency on `ubergarm/sanic-alpine`
 

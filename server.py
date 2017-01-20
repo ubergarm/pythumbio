@@ -1,13 +1,18 @@
+import os
+
 import asyncio
 import uvloop
 
 from sanic import Sanic
 from sanic.response import json, HTTPResponse
 
+# configure global settings via environment variables
+HEAD_LIMIT = os.environ.get('HEAD_LIMIT', (1024 * 1024 * 2))
+NUM_THREADS = os.environ.get('NUM_THREADS', 1)
+NUM_CONCURRENCY = os.environ.get('NUM_CONCURRENCY', 4)
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-# limit number of concurrent requests per worker thread semaphores
-sem = asyncio.Semaphore(4)
+sem = asyncio.Semaphore(NUM_CONCURRENCY)
 
 app = Sanic(__name__)
 
@@ -26,7 +31,8 @@ async def video(headers, args):
     if watermark:
         cmd = ['ffmpeg',
                '-headers',
-               'Authorization: {}\r\nRange: bytes=0-{}\r\n'.format(auth or '', 1024*1024*2),
+               'Authorization: {}\r\nRange: bytes=0-{}\r\n'
+               .format(auth, HEAD_LIMIT),
                '-i', url,
                '-i', watermark,
                '-ss', '00:00:03',
@@ -45,7 +51,7 @@ async def video(headers, args):
         cmd = ['ffmpeg',
                '-headers',
                'Authorization: {}\r\nRange: bytes=0-{}\r\n'
-               .format(auth or '', 1024*1024*2),
+               .format(auth, HEAD_LIMIT),
                '-i', url,
                '-ss', '00:00:03',
                '-frames:v', '1',
@@ -127,4 +133,4 @@ async def query_version(request):
     return await version()
 
 
-app.run(host="0.0.0.0", port=8000, workers=4)
+app.run(host="0.0.0.0", port=8000, workers=NUM_THREADS)
