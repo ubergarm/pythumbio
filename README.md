@@ -10,7 +10,7 @@ docker run --rm -it -p 8000:8000 ubergarm/pythumbio
 
 Testing:
 ```bash
-# apt-get install -y httpie || brew install htpie
+# apt-get install -y httpie || brew install httpie
 http "http://localhost:8000/video?url=http://myvideo.com/name.mp4"
 ```
 
