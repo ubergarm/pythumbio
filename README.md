@@ -63,13 +63,16 @@ flake8 --max-line-length=120 server.py
 ```
 
 ## TODO
-- [ ] Authorization
-- [ ] Error Checking
+- [x] Authorization
+- [ ] Add better error checking and return codes
 - [ ] Secure against Command Injection attacks
 - [x] Add more query parameters for various features
 - [x] Environment Variables for Config
 - [x] Consider `asyncio.subprocess`
 - [ ] Remove dependency on `ubergarm/sanic-alpine`
+
+## Bugs
+* Doesn't work if video stream info is at the end of the file.
 
 ## References
 * [ffmpeg](https://ffmpeg.org/)
