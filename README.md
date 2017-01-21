@@ -2,6 +2,11 @@ pythumbio
 ===
 Generate thumbnail images from video streams in a convenient micro-service.
 
+## Branch
+This branch tests using `aiohttp` with `uvloop` event loops. However there are some quirks when using this along with multiple `sanic` workers which come from `multiprocessing` currently.
+
+* [channelcat/sanic 152](https://github.com/channelcat/sanic/issues/152)
+
 ## Quick Start
 Running:
 ```bash
