@@ -1,7 +1,10 @@
 FROM ubergarm/sanic-alpine
 
 RUN apk add --no-cache \
-    ffmpeg
+    ffmpeg \
+    openssl \
+    ca-certificates && \
+    pip install aiohttp
 
 COPY . /app
 

@@ -2,30 +2,32 @@ import os
 
 import asyncio
 import uvloop
-import requests
+import aiohttp
 
 from sanic import Sanic
 from sanic.response import json, HTTPResponse
 
 # configure global settings via environment variables
-HEAD_LIMIT = os.environ.get('HEAD_LIMIT', (1024 * 1024 * 2))
-NUM_THREADS = os.environ.get('NUM_THREADS', 1)
-NUM_CONCURRENCY = os.environ.get('NUM_CONCURRENCY', 4)
+HEAD_LIMIT = int(os.environ.get('HEAD_LIMIT', (1024 * 1024 * 2)))
+NUM_THREADS = int(os.environ.get('NUM_THREADS', 1))
+NUM_CONCURRENCY = int(os.environ.get('NUM_CONCURRENCY', 4))
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+loop = asyncio.new_event_loop()
 sem = asyncio.Semaphore(NUM_CONCURRENCY)
 
 app = Sanic(__name__)
 
 
-# replace requests with an async streaming module e.g. aiohttp
-# https://github.com/channelcat/sanic/blob/master/examples/aiohttp_example.py
-async def fetch(url, auth=''):
+async def fetch(session, url, auth=None):
     """Fetch the first HEAD_LIMIT bytes of image content"""
-    headers = {'Range': 'bytes=0-{}'.format(HEAD_LIMIT),
-               'Authorization': '{}'.format(auth)
-               }
-    return requests.get(url, headers=headers).content
+    headers = {'Range': 'bytes=0-{}'.format(HEAD_LIMIT)}
+    if auth:
+        headers['Authorization'] = '{}'.format(auth)
+
+    async with session.get(url, headers=headers) as resp:
+        assert resp.status == 206
+        return await resp.content.read()
 
 
 async def video(headers, args):
@@ -77,7 +79,8 @@ async def video(headers, args):
 
         proc = await create
 
-        stdout, stderr = await proc.communicate(await fetch(url, auth))
+        async with aiohttp.ClientSession(loop=loop) as session:
+            stdout, stderr = await proc.communicate(await fetch(session, url, auth))
 
         await proc.wait()
 
@@ -127,4 +130,4 @@ async def query_version(request):
     return await version()
 
 
-app.run(host="0.0.0.0", port=8000, workers=NUM_THREADS)
+app.run(host="0.0.0.0", port=8000, loop=loop, workers=NUM_THREADS)
