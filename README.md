@@ -2,11 +2,6 @@ pythumbio
 ===
 Generate thumbnail images from video streams in a convenient micro-service.
 
-## Branch
-This branch tests using `aiohttp` with `uvloop` event loops. However there are some quirks when using this along with multiple `sanic` workers which come from `multiprocessing` currently.
-
-* [channelcat/sanic 152](https://github.com/channelcat/sanic/issues/152)
-
 ## Quick Start
 Running:
 ```bash
@@ -69,8 +64,8 @@ flake8 --max-line-length=120 server.py
 
 ## TODO
 - [x] Authorization
-- [ ] Add better error checking and return codes
-- [ ] Secure against Command Injection attacks
+- [x] Add better error checking and return codes
+- [ ] Test against Command Injection attacks
 - [x] Add more query parameters for various features
 - [x] Environment Variables for Config
 - [x] Consider `asyncio.subprocess`
