@@ -12,9 +12,9 @@ HEAD_LIMIT = int(os.environ.get('HEAD_LIMIT', (1024 * 1024 * 2)))
 NUM_THREADS = int(os.environ.get('NUM_THREADS', 1))
 NUM_CONCURRENCY = int(os.environ.get('NUM_CONCURRENCY', 4))
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-loop = asyncio.new_event_loop()
-sem = asyncio.Semaphore(NUM_CONCURRENCY)
+loop = uvloop.new_event_loop()
+asyncio.set_event_loop(loop)
+sem = asyncio.Semaphore(NUM_CONCURRENCY, loop=loop)
 
 app = Sanic(__name__)
 
@@ -86,6 +86,7 @@ async def video(headers, args):
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                loop=loop
                 )
 
         proc = await create
@@ -141,4 +142,4 @@ async def query_version(request):
     return await version()
 
 
-app.run(host="0.0.0.0", port=8000, loop=loop, workers=NUM_THREADS)
+app.run(host="0.0.0.0", port=8000, loop=loop)
