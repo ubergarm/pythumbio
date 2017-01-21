@@ -15,9 +15,11 @@ sem = None
 
 app = Sanic(__name__)
 
+
 def init(mysanic, myloop):
     global sem
     sem = asyncio.Semaphore(NUM_CONCURRENCY, loop=myloop)
+
 
 async def fetch(session, url, auth=None):
     """Fetch the first HEAD_LIMIT bytes of image content"""
