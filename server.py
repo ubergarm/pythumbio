@@ -25,9 +25,20 @@ async def fetch(session, url, auth=None):
     if auth:
         headers['Authorization'] = '{}'.format(auth)
 
-    async with session.get(url, headers=headers) as resp:
-        assert resp.status == 206
-        return await resp.content.read()
+    redir = None
+    # aiohttp doesn't strip Authorization headers on 30x redirect, so do it:
+    async with session.get(url, headers=headers, allow_redirects=False) as response:
+        if response.status == 206:
+            return await response.content.read()
+        if response.status == 307:
+            redir = response.headers.get('Location')
+            response.release()
+
+    if redir:
+        if auth:
+            del headers['Authorization']
+        async with session.get(redir, headers=headers, allow_redirects=False) as response:
+            return await response.content.read()
 
 
 async def video(headers, args):
