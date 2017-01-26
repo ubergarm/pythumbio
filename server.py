@@ -88,12 +88,11 @@ async def video(headers, args):
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                loop=asyncio.get_event_loop()
                 )
 
         proc = await create
 
-        async with aiohttp.ClientSession(loop=asyncio.get_event_loop()) as session:
+        async with aiohttp.ClientSession() as session:
             stdout, stderr = await proc.communicate(await fetch(session, url, auth))
 
         await proc.wait()
@@ -116,7 +115,6 @@ async def version():
         create = asyncio.create_subprocess_exec('ffmpeg',
                                                 '-version',
                                                 stdout=asyncio.subprocess.PIPE,
-                                                loop=asyncio.get_event_loop()
                                                 )
         proc = await create
 
