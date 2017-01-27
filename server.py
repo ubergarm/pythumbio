@@ -32,15 +32,22 @@ async def fetch(session, url, auth=None):
     async with session.get(url, headers=headers, allow_redirects=False) as response:
         if response.status == 206:
             return await response.content.read()
-        if response.status == 307:
+        elif response.status == 307:
             redir = response.headers.get('Location')
             response.release()
+        elif response.status >= 400:
+            response.release()
+            return None
 
     if redir:
         if auth:
             del headers['Authorization']
         async with session.get(redir, headers=headers, allow_redirects=False) as response:
-            return await response.content.read()
+            if ((response.status == 206) or (response.status == 200)):
+                return await response.content.read()
+            else:
+                response.release()
+                return None
 
 
 async def video(headers, args):
