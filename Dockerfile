@@ -4,10 +4,10 @@ RUN apk add --no-cache \
     ffmpeg \
     openssl \
     ca-certificates && \
-    pip install aiohttp
+    pip3 install aiohttp
 
-COPY . /app
+COPY ./server.py /server.py
 
-WORKDIR /app
+ENTRYPOINT ["/usr/bin/python3"]
 
-CMD python3 server.py
+CMD ["/server.py"]
