@@ -36,7 +36,8 @@ async def validate(request):
             token = None
     if token:
         url += '?token={}'.format(token)
-        request['url'] = url
+
+    request['url'] = url
 
 
 @app.route("/webm")
@@ -216,7 +217,7 @@ async def version(request):
 
 @app.exception(exceptions.NotFound)
 def ignore_404s(request, exception):
-    return json({"Error": "404: {}".format(request['url'])})
+    return json({"Error": "404: {}".format(request.url)})
 
 
 app.run(host="0.0.0.0", port=PYTHUMBIO_PORT, workers=PYTHUMBIO_WORKERS)
