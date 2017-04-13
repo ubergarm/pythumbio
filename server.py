@@ -1,153 +1,222 @@
 import os
-
+import re
+from sanic import Sanic, exceptions
+from sanic.response import json, stream
 import asyncio
-import aiohttp
 
-from sanic import Sanic
-from sanic.response import json, HTTPResponse
-
-# configure global settings via environment variables
-HEAD_LIMIT = int(os.environ.get('HEAD_LIMIT', (1024 * 1024 * 2)))
-NUM_THREADS = int(os.environ.get('NUM_THREADS', 1))
-NUM_CONCURRENCY = int(os.environ.get('NUM_CONCURRENCY', 4))
+PYTHUMBIO_PORT = int(os.environ.get('PYTHUMBIO_PORT', (8000)))
+PYTHUMBIO_WORKERS = int(os.environ.get('PYTHUMBIO_WORKERS', 2))
+PYTHUMBIO_CONCURRENCY_PER_WORKER = int(os.environ.get('PYTHUMBIO_CONCURRENCY_PER_WORKER', 4))
+PYTHUMBIO_CHUNKSIZE = int(os.environ.get('PYTHUMBIO_CHUNKSIZE', (1024 * 32)))
 
 sem = None
 
 app = Sanic(__name__)
 
 
-def init(mysanic, myloop):
+@app.listener('before_server_start')
+def init(sanic, loop):
     global sem
-    sem = asyncio.Semaphore(NUM_CONCURRENCY, loop=myloop)
+    sem = asyncio.Semaphore(PYTHUMBIO_CONCURRENCY_PER_WORKER, loop=loop)
 
 
-async def fetch(session, url, auth=None):
-    """Fetch the first HEAD_LIMIT bytes of image content"""
-    headers = {'Range': 'bytes=0-{}'.format(HEAD_LIMIT)}
+@app.middleware("request")
+async def validate(request):
+    url = request.args.get('url', None)
+    if not url:
+        return json({"Error": "URL parameter is required"})
+
+    # place JWT Authorization header ffmpeg's target url's `?token=` argument
+    auth = request.headers.get('Authorization', None)
+    token = None
     if auth:
-        headers['Authorization'] = '{}'.format(auth)
-
-    redir = None
-    # aiohttp doesn't strip Authorization headers on 30x redirect, so do it:
-    async with session.get(url, headers=headers, allow_redirects=False) as response:
-        if response.status == 206:
-            return await response.content.read()
-        elif response.status == 307:
-            redir = response.headers.get('Location')
-            response.release()
-        elif response.status >= 400:
-            response.release()
-            return None
-
-    if redir:
-        if auth:
-            del headers['Authorization']
-        async with session.get(redir, headers=headers, allow_redirects=False) as response:
-            if ((response.status == 206) or (response.status == 200)):
-                return await response.content.read()
-            else:
-                response.release()
-                return None
+        try:
+            token = re.match(r'Bearer\s+(.*)', auth).group(1)
+        except:
+            token = None
+    if token:
+        url += '?token={}'.format(token)
+        request['url'] = url
 
 
-async def video(headers, args):
-    """Returns a thumbnail extracted from video at specified url"""
-    auth = headers.get('Authorization')
-    url = args.get('url')
-    width = args.get('width', -1)
-    height = args.get('height', -1)
-    watermark = args.get('watermark')
-    alpha = args.get('alpha', 0.5)
-    scale = args.get('scale', 0.20)
-    offset = args.get('offset', 0.05)
+@app.route("/webm")
+async def webm(request):
+    """Stream webm"""
+    async def stream_fn(response):
+        async with sem:
+            cmd = ['ffmpeg',
+                   '-v',
+                   'quiet',
+                   '-i',
+                   request['url'],
+                   '-c:v',
+                   'libvpx-vp9',
+                   '-b:v',
+                   '256k',
+                   '-tile-columns',
+                   '6',
+                   '-frame-parallel',
+                   '1',
+                   '-threads',
+                   '2',
+                   '-deadline',
+                   'realtime',
+                   '-speed',
+                   '5',
+                   '-lag-in-frames',
+                   '1',
+                   '-vf',
+                   'scale=w=426:h=240:force_original_aspect_ratio=decrease',
+                   '-c:a',
+                   'libvorbis',
+                   '-b:a',
+                   '64k',
+                   '-f',
+                   'webm',
+                   '-'
+                   ]
 
-    if watermark:
-        cmd = ['ffmpeg',
-               '-i', '-',
-               '-i', watermark,
-               '-ss', '00:00:03',
-               '-frames:v', '1',
-               '-f', 'image2',
-               '-filter_complex',
-               '[1:v]colorchannelmixer=aa={alpha}[translogo]; \
-                [translogo][0:v]scale2ref={scale}*min(iw\,ih):{scale}*min(iw\,ih)[logo1][base]; \
-                [base][logo1]overlay=W-w-{offset}*min(W\,H):H-h-{offset}*min(W\,H)[prev]; \
-                [prev]scale=w={width}:h={height}:force_original_aspect_ratio=decrease[out]'
-               .format(width=width, height=height, alpha=alpha, offset=offset, scale=scale),
-               '-map', '[out]',
-               '-'
-               ]
-    else:
-        cmd = ['ffmpeg',
-               '-i', '-',
-               '-ss', '00:00:03',
-               '-frames:v', '1',
-               '-f', 'image2',
-               '-vf',
-               'scale=w={width}:h={height}:force_original_aspect_ratio=decrease'
-               .format(width=width, height=height),
-               '-'
-               ]
+            proc = await asyncio.create_subprocess_exec(*cmd,
+                                                        stdout=asyncio.subprocess.PIPE
+                                                        )
+            while True:
+                chunk = await proc.stdout.read(PYTHUMBIO_CHUNKSIZE)
+                if not chunk:
+                    break
+                response.write(chunk)
 
-    async with sem:
-        create = asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                )
-
-        proc = await create
-
-        async with aiohttp.ClientSession() as session:
-            stdout, stderr = await proc.communicate(await fetch(session, url, auth))
-
-        await proc.wait()
-
-        if proc.returncode:
-            return json(body={'stdout': bytes(stdout).decode(),
-                              'stderr': bytes(stderr).decode()},
-                        status=400)
-
-        mime_type = 'image/jpeg'
-        return HTTPResponse(status=200,
-                            headers=None,
-                            content_type=mime_type,
-                            body_bytes=stdout)
+    return stream(stream_fn, content_type='video/webm')
 
 
-async def version():
-    """Return the output of `ffmpeg -version`"""
-    async with sem:
-        create = asyncio.create_subprocess_exec('ffmpeg',
-                                                '-version',
-                                                stdout=asyncio.subprocess.PIPE,
-                                                )
-        proc = await create
+@app.route("/preview")
+async def preview(request):
+    """Stream webm preview"""
+    async def stream_fn(response):
+        async with sem:
+            cmd = ['ffmpeg',
+                   '-v',
+                   'quiet',
+                   '-i',
+                   request['url'],
+                   '-c:v',
+                   'libvpx-vp9',
+                   '-b:v',
+                   '256k',
+                   '-tile-columns',
+                   '6',
+                   '-frame-parallel',
+                   '1',
+                   '-threads',
+                   '2',
+                   '-deadline',
+                   'realtime',
+                   '-speed',
+                   '5',
+                   '-lag-in-frames',
+                   '1',
+                   '-vf',
+                   'select=isnan(prev_selected_t)+gt(t-prev_selected_t\,4),setpts=(1/10)*PTS,scale=w=426:h=240:force_original_aspect_ratio=decrease',
+                   '-an',
+                   '-f',
+                   'webm',
+                   '-'
+                   ]
 
-        stdout = bytearray()
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                break
-            stdout.extend(line)
+            proc = await asyncio.create_subprocess_exec(*cmd,
+                                                        stdout=asyncio.subprocess.PIPE
+                                                        )
+            while True:
+                chunk = await proc.stdout.read(PYTHUMBIO_CHUNKSIZE)
+                if not chunk:
+                    break
+                response.write(chunk)
 
-        await proc.wait()
-
-        return json({"version": bytes(stdout).decode()})
+    return stream(stream_fn, content_type='video/webm')
 
 
 @app.route("/video")
-async def query_video(request):
-    if not request.args.get('url'):
-        return json(body={'error': 'no url paramter found'}, status=400)
+@app.route("/thumb")
+async def thumb(request):
+    """Return jpg thumbnail"""
+    async def stream_fn(response):
+        async with sem:
+            cmd = ['ffmpeg',
+                   '-v',
+                   'quiet',
+                   '-i',
+                   request['url'],
+                   '-vf',
+                   'select=(isnan(prev_selected_t)*gt(t\,2.0))+gt(scene\,0.5),scale=w=426:h=240:force_original_aspect_ratio=decrease,tile=1x1',
+                   '-frames:v',
+                   '1',
+                   '-f',
+                   'image2',
+                   '-'
+                   ]
 
-    return await video(request.headers, request.args)
+            proc = await asyncio.create_subprocess_exec(*cmd,
+                                                        stdout=asyncio.subprocess.PIPE
+                                                        )
+            while True:
+                chunk = await proc.stdout.read(PYTHUMBIO_CHUNKSIZE)
+                if not chunk:
+                    break
+                response.write(chunk)
+
+    return stream(stream_fn, content_type='image/jpeg')
+
+
+@app.route("/meta")
+async def meta(request):
+    """Return ffprobe metadata"""
+    async def stream_fn(response):
+        async with sem:
+            cmd = ['ffprobe',
+                   '-v',
+                   'quiet',
+                   '-i',
+                   request['url'],
+                   '-print_format',
+                   'json',
+                   '-show_format',
+                   '-show_streams'
+                   ]
+
+            proc = await asyncio.create_subprocess_exec(*cmd,
+                                                        stdout=asyncio.subprocess.PIPE
+                                                        )
+            while True:
+                chunk = await proc.stdout.read(PYTHUMBIO_CHUNKSIZE)
+                if not chunk:
+                    break
+                response.write(chunk)
+
+    return stream(stream_fn, content_type='application/json')
 
 
 @app.route("/version")
-async def query_version(request):
-    return await version()
+async def version(request):
+    """Return the output of `ffmpeg -version`"""
+    async def stream_fn(response):
+        async with sem:
+            proc = await asyncio.create_subprocess_exec('ffmpeg',
+                                                        '-version',
+                                                        stdout=asyncio.subprocess.PIPE,
+                                                        )
+            response.write('{"ver":"')
+            while True:
+                chunk = await proc.stdout.read(5)
+                if not chunk:
+                    break
+                response.write(chunk)
+            response.write('"}')
+
+    return stream(stream_fn, content_type='application/json')
 
 
-app.run(host="0.0.0.0", port=8000, workers=NUM_THREADS, before_start=init)
+@app.exception(exceptions.NotFound)
+def ignore_404s(request, exception):
+    return json({"Error": "404: {}".format(request['url'])})
+
+
+app.run(host="0.0.0.0", port=PYTHUMBIO_PORT, workers=PYTHUMBIO_WORKERS)
