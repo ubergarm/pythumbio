@@ -27,7 +27,7 @@ async def init(sanic, loop):
 @app.middleware("request")
 async def validate(request):
     url = request.args.get('url', None)
-    if not url:
+    if not url and request.path != '/version':
         return json({"Error": "URL parameter is required"})
 
     # place JWT Authorization header ffmpeg's target url's `?token=` argument
