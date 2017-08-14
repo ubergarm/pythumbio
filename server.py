@@ -2,7 +2,9 @@ import os
 import re
 from sanic import Sanic, exceptions
 from sanic.response import json, stream
+from sanic.log import log
 import asyncio
+
 
 PYTHUMBIO_PORT = int(os.environ.get('PYTHUMBIO_PORT', (8000)))
 PYTHUMBIO_WORKERS = int(os.environ.get('PYTHUMBIO_WORKERS', 2))
@@ -15,9 +17,11 @@ app = Sanic(__name__)
 
 
 @app.listener('before_server_start')
-def init(sanic, loop):
+async def init(sanic, loop):
     global sem
     sem = asyncio.Semaphore(PYTHUMBIO_CONCURRENCY_PER_WORKER, loop=loop)
+    log.info('Creating semaphore with max concurrency of {} for this worker thread.'
+             .format(PYTHUMBIO_CONCURRENCY_PER_WORKER))
 
 
 @app.middleware("request")
