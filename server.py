@@ -4,6 +4,7 @@ from sanic import Sanic, exceptions
 from sanic.response import json, stream
 from sanic.log import log
 import asyncio
+from functools import wraps
 
 
 PYTHUMBIO_PORT = int(os.environ.get('PYTHUMBIO_PORT', (8000)))
@@ -16,6 +17,20 @@ sem = None
 app = Sanic(__name__)
 
 
+def required_args(*expected_args):
+    """Ensure url parameters exist before processing request"""
+    def decorator(f):
+        @wraps(f)
+        async def wrapper(request, *args, **kwargs):
+            for expected_arg in expected_args:
+                if not request.args.get(expected_arg, None):
+                    return json({'Error': '{} parameter is required'.format(expected_arg)})
+            response = await f(request, *args, **kwargs)
+            return response
+        return wrapper
+    return decorator
+
+
 @app.listener('before_server_start')
 async def init(sanic, loop):
     global sem
@@ -24,27 +39,8 @@ async def init(sanic, loop):
              .format(PYTHUMBIO_CONCURRENCY_PER_WORKER))
 
 
-@app.middleware("request")
-async def validate(request):
-    url = request.args.get('url', None)
-    if not url and request.path != '/version':
-        return json({"Error": "URL parameter is required"})
-
-    # place JWT Authorization header ffmpeg's target url's `?token=` argument
-    auth = request.headers.get('Authorization', None)
-    token = None
-    if auth:
-        try:
-            token = re.match(r'Bearer\s+(.*)', auth).group(1)
-        except:
-            token = None
-    if token:
-        url += '?token={}'.format(token)
-
-    request['url'] = url
-
-
-@app.route("/webm")
+@app.route('/webm')
+@required_args('url')
 async def webm(request):
     """Stream webm"""
     async def stream_fn(response):
@@ -53,7 +49,7 @@ async def webm(request):
                    '-v',
                    'quiet',
                    '-i',
-                   request['url'],
+                   request.args.get('url'),
                    '-c:v',
                    'libvpx-vp9',
                    '-b:v',
@@ -93,7 +89,8 @@ async def webm(request):
     return stream(stream_fn, content_type='video/webm')
 
 
-@app.route("/preview")
+@app.route('/preview')
+@required_args('url')
 async def preview(request):
     """Stream webm preview"""
     async def stream_fn(response):
@@ -102,7 +99,7 @@ async def preview(request):
                    '-v',
                    'quiet',
                    '-i',
-                   request['url'],
+                   request.args.get('url'),
                    '-c:v',
                    'libvpx-vp9',
                    '-b:v',
@@ -139,8 +136,9 @@ async def preview(request):
     return stream(stream_fn, content_type='video/webm')
 
 
-@app.route("/video")
-@app.route("/thumb")
+@app.route('/video')
+@app.route('/thumb')
+@required_args('url')
 async def thumb(request):
     """Return jpg thumbnail"""
     async def stream_fn(response):
@@ -149,7 +147,7 @@ async def thumb(request):
                    '-v',
                    'quiet',
                    '-i',
-                   request['url'],
+                   request.args.get('url'),
                    '-vf',
                    'select=(isnan(prev_selected_t)*gt(t\,2.0))+gt(scene\,0.5),scale=w=426:h=240:force_original_aspect_ratio=decrease,tile=1x1',
                    '-frames:v',
@@ -171,7 +169,8 @@ async def thumb(request):
     return stream(stream_fn, content_type='image/jpeg')
 
 
-@app.route("/meta")
+@app.route('/meta')
+@required_args('url')
 async def meta(request):
     """Return ffprobe metadata"""
     async def stream_fn(response):
@@ -180,7 +179,7 @@ async def meta(request):
                    '-v',
                    'quiet',
                    '-i',
-                   request['url'],
+                   request.args.get('url'),
                    '-print_format',
                    'json',
                    '-show_format',
@@ -199,7 +198,7 @@ async def meta(request):
     return stream(stream_fn, content_type='application/json')
 
 
-@app.route("/version")
+@app.route('/version')
 async def version(request):
     """Return the output of `ffmpeg -version`"""
     async def stream_fn(response):
@@ -221,7 +220,7 @@ async def version(request):
 
 @app.exception(exceptions.NotFound)
 def ignore_404s(request, exception):
-    return json({"Error": "404: {}".format(request.url)})
+    return json({'Error': '404: {}'.format(request.url)})
 
 
-app.run(host="0.0.0.0", port=PYTHUMBIO_PORT, workers=PYTHUMBIO_WORKERS)
+app.run(host='0.0.0.0', port=PYTHUMBIO_PORT, workers=PYTHUMBIO_WORKERS)
