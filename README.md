@@ -1,5 +1,7 @@
 pythumbio
 ===
+[![](https://images.microbadger.com/badges/image/ubergarm/pythumbio.svg)](https://microbadger.com/images/ubergarm/pythumbio) [![](https://images.microbadger.com/badges/version/ubergarm/pythumbio.svg)](https://microbadger.com/images/ubergarm/pythumbio) [![License](https://img.shields.io/github/license/mashape/apistatus.svg)](https://github.com/ubergarm/pythumbio/blob/master/LICENSE)
+
 Streaming `webm` transcoder plus previews, metadata, and `jpg` thumbnails in a convenient micro-service.
 
 ## Quick Start
