@@ -140,22 +140,50 @@ async def preview(request):
 @app.route('/thumb')
 @required_args('url')
 async def thumb(request):
-    """Return jpg thumbnail"""
+    """Return jpg thumbnail with optional watermark"""
+    watermark = request.args.get('watermark', None)
+    width = request.args.get('width', -1)
+    height = request.args.get('height', -1)
+    alpha = request.args.get('alpha', 0.5)
+    scale = request.args.get('scale', 0.20)
+    offset = request.args.get('offset', 0.1)
+    log.info(watermark)
+
     async def stream_fn(response):
         async with sem:
-            cmd = ['ffmpeg',
-                   '-v',
-                   'quiet',
-                   '-i',
-                   request.args.get('url'),
-                   '-vf',
-                   'select=(isnan(prev_selected_t)*gt(t\,2.0))+gt(scene\,0.5),scale=w=426:h=240:force_original_aspect_ratio=decrease,tile=1x1',
-                   '-frames:v',
-                   '1',
-                   '-f',
-                   'image2',
-                   '-'
-                   ]
+            if watermark:
+                cmd = ['ffmpeg',
+                       '-v',
+                       'quiet',
+                       '-i',
+                       request.args.get('url'),
+                       '-i', watermark,
+                       '-ss', '00:00:03',
+                       '-frames:v', '1',
+                       '-f', 'image2',
+                       '-filter_complex',
+                       '[1:v]colorchannelmixer=aa={alpha}[translogo]; \
+                        [translogo][0:v]scale2ref={scale}*min(iw\,ih):{scale}*min(iw\,ih)[logo1][base]; \
+                        [base][logo1]overlay=W-w-{offset}*min(W\,H):H-h-{offset}*min(W\,H)[prev]; \
+                        [prev]scale=w={width}:h={height}:force_original_aspect_ratio=decrease[out]'
+                       .format(width=width, height=height, alpha=alpha, offset=offset, scale=scale),
+                       '-map', '[out]',
+                       '-'
+                       ]
+            else:
+                cmd = ['ffmpeg',
+                       '-v',
+                       'quiet',
+                       '-i',
+                       request.args.get('url'),
+                       '-vf',
+                       'select=(isnan(prev_selected_t)*gt(t\,2.0))+gt(scene\,0.5),scale=w=426:h=240:force_original_aspect_ratio=decrease,tile=1x1',
+                       '-frames:v',
+                       '1',
+                       '-f',
+                       'image2',
+                       '-'
+                       ]
 
             proc = await asyncio.create_subprocess_exec(*cmd,
                                                         stdout=asyncio.subprocess.PIPE
